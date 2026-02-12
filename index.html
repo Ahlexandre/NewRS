@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NewRS</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <h1>NewRS</h1>
+
+  <section id="auth-section" class="auth-grid">
+    <article class="card">
+      <h2>Connexion</h2>
+      <form id="login-form">
+        <input type="email" id="login-email" placeholder="Email" required />
+        <input type="password" id="login-password" placeholder="Mot de passe" required />
+        <button type="submit">Se connecter</button>
+      </form>
+      <p id="login-error" class="form-error hidden" role="alert"></p>
+    </article>
+
+    <article class="card">
+      <h2>Inscription</h2>
+      <form id="signup-form">
+        <input type="email" id="signup-email" placeholder="Email" required />
+        <input type="password" id="signup-password" placeholder="Mot de passe" required />
+        <button type="submit">S'inscrire</button>
+      </form>
+      <p id="signup-error" class="form-error hidden" role="alert"></p>
+    </article>
+  </section>
+
+  <section id="user-section" class="hidden">
+    <p>Connecte : <span id="user-email"></span></p>
+    <button id="logout" type="button">Deconnexion</button>
+
+    <h2>Publier un message</h2>
+    <form id="message-form">
+      <input type="text" id="message-input" placeholder="Ton message" required />
+      <button type="submit">Publier</button>
+    </form>
+  </section>
+
+  <h2>Messages</h2>
+  <div id="messages"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
