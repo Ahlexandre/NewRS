@@ -1,12 +1,21 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
-import { getFirestore } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+import { 
+  getAuth, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  fetchSignInMethodsForEmail, 
+  signOut, 
+  onAuthStateChanged 
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  serverTimestamp, 
+  onSnapshot 
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
-import AuthService from "./services/AuthService.js";
-import FirestoreWriteService from "./services/FirestoreWriteService.js";
-import FirestoreReadService from "./services/FirestoreReadService.js";
-
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// --- CONFIGURATION ---
 const firebaseConfig = {
   apiKey: "AIzaSyA-H0wdOizgO9RX4PaqL994-DPdkfqLeTs",
   authDomain: "newrs-f46d8.firebaseapp.com",
@@ -21,13 +30,10 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const authService = new AuthService(auth);
-const firestoreWriteService = new FirestoreWriteService(db);
-const firestoreReadService = new FirestoreReadService(db);
-
+// --- LOGIQUE DOM ---
 const authSection = document.getElementById("auth-section");
 const userSection = document.getElementById("user-section");
-const userEmail = document.getElementById("user-email");
+const userEmailDisplay = document.getElementById("user-email");
 
 const signupForm = document.getElementById("signup-form");
 const signupEmail = document.getElementById("signup-email");
@@ -44,24 +50,19 @@ const messageForm = document.getElementById("message-form");
 const messageInput = document.getElementById("message-input");
 const messagesDiv = document.getElementById("messages");
 
-function showError(error) {
-  alert(error.message || "Une erreur est survenue.");
-}
-
+// --- UTILITAIRES ---
 function getAuthErrorMessage(error) {
   const map = {
     "auth/invalid-email": "Adresse email invalide.",
     "auth/missing-password": "Le mot de passe est obligatoire.",
-    "auth/weak-password": "Le mot de passe doit contenir au moins 6 caracteres.",
-    "auth/email-already-in-use": "Cet email est deja utilise.",
+    "auth/weak-password": "Le mot de passe doit contenir au moins 6 caractères.",
+    "auth/email-already-in-use": "Cet email est déjà utilisé.",
     "auth/user-not-found": "Ce compte n'existe pas.",
     "auth/wrong-password": "Mot de passe incorrect.",
-    "auth/invalid-credential": "Mot de passe incorrect.",
-    "auth/invalid-login-credentials": "Mot de passe incorrect.",
-    "auth/too-many-requests": "Trop de tentatives. Reessaye plus tard."
+    "auth/invalid-credential": "Identifiants incorrects.",
+    "auth/too-many-requests": "Trop de tentatives. Réessaye plus tard."
   };
-
-  return map[error?.code] || "Impossible de traiter la demande pour le moment.";
+  return map[error?.code] || error.message || "Erreur inconnue.";
 }
 
 function showFormError(element, message) {
@@ -74,106 +75,120 @@ function clearFormError(element) {
   element.classList.add("hidden");
 }
 
-function formatTimestamp(createdAt) {
-  if (!createdAt || typeof createdAt.toDate !== "function") {
-    return "Envoi en cours...";
-  }
-
-  return createdAt.toDate().toLocaleString("fr-FR", {
-    dateStyle: "short",
-    timeStyle: "short"
-  });
+function formatTimestamp(ts) {
+  if (!ts || typeof ts.toDate !== "function") return "À l'instant";
+  return ts.toDate().toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
 }
 
-signupForm.addEventListener("submit", async event => {
-  event.preventDefault();
-  clearFormError(signupError);
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    // Utilisateur connecté : On affiche la zone utilisateur et le formulaire de message
+    authSection.classList.add("hidden");
+    userSection.classList.remove("hidden");
+    userEmailDisplay.textContent = user.email;
+    loadMessages(); // On lance l'écoute des messages
+  } else {
+    // Utilisateur déconnecté : On affiche les formulaires de connexion
+    authSection.classList.remove("hidden");
+    userSection.classList.add("hidden");
+    userEmailDisplay.textContent = "";
+    // Optionnel : on pourrait arrêter d'écouter les messages ici
+  }
+});
 
+signupForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  clearFormError(signupError);
   try {
-    await authService.signup(signupEmail.value.trim(), signupPassword.value);
+    await createUserWithEmailAndPassword(auth, signupEmail.value, signupPassword.value);
     signupForm.reset();
   } catch (error) {
     showFormError(signupError, getAuthErrorMessage(error));
   }
 });
 
-loginForm.addEventListener("submit", async event => {
-  event.preventDefault();
+loginForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
   clearFormError(loginError);
-  const email = loginEmail.value.trim().toLowerCase();
-
   try {
-    const accountExists = await authService.accountExists(email);
-    if (!accountExists) {
-      showFormError(loginError, "Ce compte n'existe pas.");
-      return;
-    }
-
-    await authService.login(email, loginPassword.value);
+    // Petite vérification bonus d'existence
+    /* Note : fetchSignInMethodsForEmail est parfois bloqué par la sécu Firebase récente, 
+       on peut tenter le login direct qui renverra une erreur si le compte n'existe pas. */
+    await signInWithEmailAndPassword(auth, loginEmail.value, loginPassword.value);
     loginForm.reset();
   } catch (error) {
     showFormError(loginError, getAuthErrorMessage(error));
   }
 });
 
-logoutBtn.addEventListener("click", async () => {
-  try {
-    await authService.logout();
-  } catch (error) {
-    showError(error);
-  }
+logoutBtn.addEventListener("click", () => {
+  signOut(auth).catch((err) => alert(err.message));
 });
 
-authService.onAuthChange(user => {
-  if (user) {
-    authSection.classList.add("hidden");
-    userSection.classList.remove("hidden");
-    userEmail.textContent = user.email || "Utilisateur";
-    return;
-  }
+// --- GESTION DES MESSAGES (PARTIE 2 & 3) ---
+// [cite: 36, 40, 41, 46]
 
-  authSection.classList.remove("hidden");
-  userSection.classList.add("hidden");
-  userEmail.textContent = "";
-});
+messageForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const content = messageInput.value.trim();
+  const user = auth.currentUser;
 
-messageForm.addEventListener("submit", async event => {
-  event.preventDefault();
-
-  const user = authService.getCurrentUser();
-  if (!user) {
-    alert("Tu dois etre connecte pour publier.");
-    return;
-  }
+  if (!content || !user) return;
 
   try {
-    await firestoreWriteService.createMessage(messageInput.value, user);
+    await addDoc(collection(db, "messages"), {
+      content: content,
+      uid: user.uid,
+      email: user.email, // 
+      createdAt: serverTimestamp(), // 
+      timestamp: serverTimestamp() // Doublon par sécurité pour ton tri existant
+    });
     messageForm.reset();
   } catch (error) {
-    showError(error);
+    console.error("Erreur d'envoi:", error);
+    alert("Impossible d'envoyer le message.");
   }
 });
 
-firestoreReadService.subscribeToMessages(
-  messages => {
+function loadMessages() {
+  // [cite: 43, 44, 45, 46]
+  const messagesRef = collection(db, "messages");
+  
+onSnapshot(messagesRef, (snapshot) => {
     messagesDiv.innerHTML = "";
+    
+    const messages = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
 
-    messages.forEach(message => {
-      const wrapper = document.createElement("div");
-      wrapper.className = "message";
+    // --- CORRECTION 1 : Le Tri ---
+    // On vérifie createdAt OU timestamp pour être sûr d'avoir une date
+    messages.sort((a, b) => {
+      const tA = a.createdAt?.seconds || a.timestamp?.seconds || 0;
+      const tB = b.createdAt?.seconds || b.timestamp?.seconds || 0;
+      return tB - tA;
+    });
+
+    messages.forEach(msg => {
+      const el = document.createElement("div");
+      el.className = "message";
+      
+      // --- CORRECTION 2 : L'Affichage ---
+      // On récupère la date disponible (createdAt ou timestamp)
+      const dateObj = msg.createdAt || msg.timestamp;
 
       const meta = document.createElement("p");
       meta.className = "message-meta";
-      meta.textContent = `${message.email || "Inconnu"} - ${formatTimestamp(message.createdAt || message.timestamp)}`;
+      // On passe cet objet date consolidé à ta fonction de formatage
+      meta.textContent = `${msg.email} • ${formatTimestamp(dateObj)}`;
 
-      const content = document.createElement("p");
-      content.textContent = message.content || "";
+      const text = document.createElement("p");
+      text.textContent = msg.content;
 
-      wrapper.append(meta, content);
-      messagesDiv.appendChild(wrapper);
+      el.appendChild(meta);
+      el.appendChild(text);
+      messagesDiv.appendChild(el);
     });
-  },
-  error => {
-    showError(error);
-  }
-);
+  });
+}
