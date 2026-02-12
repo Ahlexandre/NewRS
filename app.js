@@ -53,14 +53,10 @@ const messagesDiv = document.getElementById("messages");
 // --- UTILITAIRES ---
 function getAuthErrorMessage(error) {
   const map = {
-    "auth/invalid-email": "Adresse email invalide.",
-    "auth/missing-password": "Le mot de passe est obligatoire.",
     "auth/weak-password": "Le mot de passe doit contenir au moins 6 caractères.",
     "auth/email-already-in-use": "Cet email est déjà utilisé.",
     "auth/user-not-found": "Ce compte n'existe pas.",
-    "auth/wrong-password": "Mot de passe incorrect.",
-    "auth/invalid-credential": "Identifiants incorrects.",
-    "auth/too-many-requests": "Trop de tentatives. Réessaye plus tard."
+    "auth/invalid-login-credentials": "Identifiants de connexion invalides.",
   };
   return map[error?.code] || error.message || "Erreur inconnue.";
 }
@@ -82,17 +78,14 @@ function formatTimestamp(ts) {
 
 onAuthStateChanged(auth, (user) => {
   if (user) {
-    // Utilisateur connecté : On affiche la zone utilisateur et le formulaire de message
     authSection.classList.add("hidden");
     userSection.classList.remove("hidden");
     userEmailDisplay.textContent = user.email;
-    loadMessages(); // On lance l'écoute des messages
+    loadMessages(); 
   } else {
-    // Utilisateur déconnecté : On affiche les formulaires de connexion
     authSection.classList.remove("hidden");
     userSection.classList.add("hidden");
     userEmailDisplay.textContent = "";
-    // Optionnel : on pourrait arrêter d'écouter les messages ici
   }
 });
 
@@ -111,9 +104,6 @@ loginForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   clearFormError(loginError);
   try {
-    // Petite vérification bonus d'existence
-    /* Note : fetchSignInMethodsForEmail est parfois bloqué par la sécu Firebase récente, 
-       on peut tenter le login direct qui renverra une erreur si le compte n'existe pas. */
     await signInWithEmailAndPassword(auth, loginEmail.value, loginPassword.value);
     loginForm.reset();
   } catch (error) {
@@ -124,9 +114,6 @@ loginForm.addEventListener("submit", async (e) => {
 logoutBtn.addEventListener("click", () => {
   signOut(auth).catch((err) => alert(err.message));
 });
-
-// --- GESTION DES MESSAGES (PARTIE 2 & 3) ---
-// [cite: 36, 40, 41, 46]
 
 messageForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -140,8 +127,7 @@ messageForm.addEventListener("submit", async (e) => {
       content: content,
       uid: user.uid,
       email: user.email, // 
-      createdAt: serverTimestamp(), // 
-      timestamp: serverTimestamp() // Doublon par sécurité pour ton tri existant
+      createdAt: serverTimestamp(),  
     });
     messageForm.reset();
   } catch (error) {
@@ -151,7 +137,6 @@ messageForm.addEventListener("submit", async (e) => {
 });
 
 function loadMessages() {
-  // [cite: 43, 44, 45, 46]
   const messagesRef = collection(db, "messages");
   
 onSnapshot(messagesRef, (snapshot) => {
@@ -162,8 +147,6 @@ onSnapshot(messagesRef, (snapshot) => {
       ...doc.data()
     }));
 
-    // --- CORRECTION 1 : Le Tri ---
-    // On vérifie createdAt OU timestamp pour être sûr d'avoir une date
     messages.sort((a, b) => {
       const tA = a.createdAt?.seconds || a.timestamp?.seconds || 0;
       const tB = b.createdAt?.seconds || b.timestamp?.seconds || 0;
@@ -174,13 +157,10 @@ onSnapshot(messagesRef, (snapshot) => {
       const el = document.createElement("div");
       el.className = "message";
       
-      // --- CORRECTION 2 : L'Affichage ---
-      // On récupère la date disponible (createdAt ou timestamp)
       const dateObj = msg.createdAt || msg.timestamp;
 
       const meta = document.createElement("p");
       meta.className = "message-meta";
-      // On passe cet objet date consolidé à ta fonction de formatage
       meta.textContent = `${msg.email} • ${formatTimestamp(dateObj)}`;
 
       const text = document.createElement("p");
